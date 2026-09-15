@@ -3,6 +3,11 @@
 from dataclasses import dataclass
 
 
+def canonical(a: str, b: str) -> tuple[str, str]:
+    """Return the sorted (a, b) pair, matching Connection's ordering"""
+    return (a, b) if a <= b else (b, a)
+
+
 @dataclass(frozen=True)
 class Connection:
     """An edge between two hub.
@@ -19,8 +24,9 @@ class Connection:
 
     def __post_init__(self) -> None:
         if self.zone_a > self.zone_b:
-            object.__setattr__(self, "zone_a", self.zone_b)
-            object.__setattr__(self, "zone_b", self.zone_a)
+            a, b = self.zone_b, self.zone_a
+            object.__setattr__(self, "zone_a", a)
+            object.__setattr__(self, "zone_b", b)
 
     def connects(self, name: str) -> bool:
         """Return True if this connection touches the given zone."""
@@ -35,6 +41,7 @@ class Connection:
             return self.zone_a
         raise ValueError(f"{name!r} is not part of connection {self!r}")
 
+    @property
     def endpoints(self) -> tuple[str, str]:
         """Canonical endpoint pair, usabe as a dict key."""
 

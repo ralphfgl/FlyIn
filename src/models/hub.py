@@ -3,7 +3,6 @@
 from dataclasses import dataclass, field
 
 from .zone_type import ZoneType
-from models import zone_type
 
 
 @dataclass
