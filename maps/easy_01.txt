@@ -1,0 +1,11 @@
+nb_drones: 4
+start_hub: start 0 0 [color=green]
+end_hub: goal 10 0 [color=yellow]
+hub: junction 5 0 [color=yellow]
+hub: upper 5 3 [color=blue]
+hub: lower 5 -3 [color=blue]
+connection: start-junction
+connection: junction-upper
+connection: junction-lower
+connection: upper-goal
+connection: lower-goal
