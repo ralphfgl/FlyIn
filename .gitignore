@@ -171,6 +171,7 @@ venv.bak/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+repomix*
 
 # Pyre type checker
 .pyre/
@@ -216,3 +217,4 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
