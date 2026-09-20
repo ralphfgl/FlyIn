@@ -3,9 +3,9 @@
 import heapq
 from dataclasses import dataclass
 
-from models.graph import Graph
-from models.hub import Hub
-from models.zone_type import ZoneType
+from .models.graph import Graph
+from .models.hub import Hub
+from .models.zone_type import ZoneType
 
 
 @dataclass(frozen=True)
@@ -83,9 +83,9 @@ class PathFinder:
         base = hub.zone_type.movement_cost
         penalty = penalties.get(hub.name, 0.0)
         priority_bonus = -1 if hub.zone_type is ZoneType.PRIORITY else 0
-        return (int(base + penalty)), priority_bonus)
+        return (int(base + penalty), priority_bonus)
 
-    def _dijkstra(self, penalties: dict[str, float])-> Path | None:
+    def _dijkstra(self, penalties: dict[str, float]) -> Path | None:
         """Run a single cost-weighted Dijkstra search.
         Args:
             penalties: Extra cost added to hub entry, keyed by hub name.
@@ -93,12 +93,12 @@ class PathFinder:
             the best Path found, or None if end is unreachable.
         """
 
-        #dist[hub] = best cumulative cost to reach hub (cheapest way to reach hub from start)
+        # dist[hub] = best cumulative cost to reach hub (cheapest way to reach hub from start)
         dist: dict[str, _Cost] = {self._start: (0, 0)}
         # for each hub, which hub we came from on the best path (to reconstruct the route)
         prev: dict[str, str] = {}
         # priority queue, to pick the unknown hub with smallest cost
-        heap: list[tuple[_Cost, str]] = [((0,0), self._start)]
+        heap: list[tuple[_Cost, str]] = [((0, 0), self._start)]
         while heap:
             # pop the cheapest unsettled hub
             cost, current = heapq.heappop(heap)
@@ -124,20 +124,21 @@ class PathFinder:
                     prev[neighbor_name] = current
                     heapq.heappush(heap, (new_cost, neighbor_name))
 
-        if self.end not in prev and self._start != self._end:
+        if self._end not in prev and self._start != self._end:
             return None
         # reconstruct path
         path = [self._end]
         while path[-1] != self._start:
             path.append(prev[path[-1]])
         path.reverse()
-        #compute realized turn cost along the path
+        # compute realized turn cost along the path
         total = 0
         for hub_name in path[1:]:
             total += self.graph.hubs[hub_name].zone_type.movement_cost
         return Path(hubs=tuple(path))
 
-
     def _path_cost(self, path: Path) -> int:
         """Turn cost of a past, ignoring priority tie-break."""
-        return sum(self.graph.hubs[h].zone_type.movement_cost for h in path.hubs)
+        return sum(
+            self.graph.hubs[h].zone_type.movement_cost for h in path.hubs
+        )
