@@ -3,7 +3,7 @@
 from collections import defaultdict
 
 from .connections import Connection, canonical
-from .hub import Hub
+from FlyIn.models.hub import Hub
 
 
 class Graph:

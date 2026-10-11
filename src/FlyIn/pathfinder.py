@@ -3,9 +3,9 @@
 import heapq
 from dataclasses import dataclass
 
-from .models.graph import Graph
-from .models.hub import Hub
-from .models.zone_type import ZoneType
+from FlyIn.models.graph import Graph
+from FlyIn.models.hub import Hub
+from FlyIn.models.zone_type import ZoneType
 
 
 @dataclass(frozen=True)

@@ -2,10 +2,11 @@
 
 from dataclasses import dataclass, field
 
-from .vizualizer import TextVisualizer
-from .models.graph import Graph
-from .models.hub import Hub
-from .pathfinder import Path
+from FlyIn.vizualizer import TextVisualizer
+from FlyIn.pygame_visualizer import PygameVisualizer
+from FlyIn.models.graph import Graph
+from FlyIn.models.hub import Hub
+from FlyIn.pathfinder import Path
 
 
 @dataclass
@@ -42,7 +43,7 @@ class Scheduler:
         graph: Graph,
         paths: list[Path],
         nb_drones: int,
-        visualizer: TextVisualizer | None = None,
+        visualizer: TextVisualizer | PygameVisualizer | None = None,
     ) -> None:
         if not paths:
             raise ValueError("Scheduler requires at least one path")
@@ -122,14 +123,14 @@ class Scheduler:
         if cost == 2:
             # restricted: begin a 2-turn transit thru connection
             conn = self.graph.get_connection(d.current_hub, target)
-            key = conn.endpoints()
+            key = conn.endpoints
             used = self._in_transit.get(key, 0)
             if used >= conn.max_link_capacity:
                 return  # connection busy
             # NOTE: we dont wait for destination space, the drone commit to the connection
             self._in_transit[key] = used + 1
             # discard -> set method to remove a key
-            self._occupancy[d.current_hub].discard()
+            self._occupancy[d.current_hub].discard(d.drone_id)
             d.transit_target = target
             d.transit_turns_left = 2
             moves.append(f"{d.drone_id}-{conn.zone_a}-{conn.zone_b}")

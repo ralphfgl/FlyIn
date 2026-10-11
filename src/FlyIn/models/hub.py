@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 
-from .zone_type import ZoneType
+from FlyIn.models.zone_type import ZoneType
 
 
 @dataclass

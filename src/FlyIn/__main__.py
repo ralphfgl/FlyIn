@@ -3,10 +3,12 @@
 import argparse
 import sys
 
-from .parser import ParseError, parse_file, ParsedMap
-from .pathfinder import PathFinder
-from .scheduler import Scheduler
-from .vizualizer import TextVisualizer
+from FlyIn import vizualizer
+from FlyIn.parser import ParseError, parse_file, ParsedMap
+from FlyIn.pathfinder import PathFinder
+from FlyIn.scheduler import Scheduler
+from FlyIn.vizualizer import TextVisualizer
+from FlyIn.pygame_visualizer import PygameVisualizer
 
 
 def main() -> int:
@@ -22,7 +24,7 @@ def main() -> int:
     parser.add_argument(
         "--visualize",
         action="store_true",
-        help="Print hub occupancy after each turn",
+        help="Show the simulation in a Pygame window",
     )
     args = parser.parse_args()
 
@@ -39,7 +41,14 @@ def main() -> int:
         print("No path from start to end exists", file=sys.stderr)
         return 1
 
-    visualizer = TextVisualizer(graph) if args.visualize else None
+    if args.visualize:
+        visualizer = PygameVisualizer(graph)
+        start_hub = next(
+            hub.name for hub in graph.hubs.values() if hub.is_start
+        )
+        visualizer.render_initial_state(start_hub, nb_drones)
+    else:
+        visualizer = TextVisualizer(graph)
     scheduler = Scheduler(graph, paths, nb_drones, visualizer=visualizer)
     turns = scheduler.run()
 

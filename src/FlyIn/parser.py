@@ -4,10 +4,10 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from .models.connections import Connection
-from .models.graph import Graph
-from .models.hub import Hub
-from .models.zone_type import ZoneType
+from FlyIn.models.connections import Connection
+from FlyIn.models.graph import Graph
+from FlyIn.models.hub import Hub
+from FlyIn.models.zone_type import ZoneType
 
 
 class ParseError(Exception):
