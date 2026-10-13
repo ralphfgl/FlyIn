@@ -14,6 +14,7 @@ class ZoneType(Enum):
     @property
     def movement_cost(self) -> int:
         """Return the number of turns required to enter this zone type."""
+
         if self is ZoneType.RESTRICTED:
             return 2
         if self is ZoneType.BLOCKED:
@@ -23,4 +24,5 @@ class ZoneType(Enum):
     @property
     def is_walkable(self) -> bool:
         """Return True if drones can enter this zone type."""
+
         return self is not ZoneType.BLOCKED

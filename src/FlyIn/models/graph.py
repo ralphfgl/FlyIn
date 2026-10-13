@@ -1,44 +1,79 @@
 """Graph container for the drone network."""
 
-from collections import defaultdict
+from typing import Any, Self, Annotated
+
+from pydantic import (
+    BaseModel,
+    model_validator,
+    BeforeValidator,
+    Field,
+    PrivateAttr,
+)
 
 from .connections import Connection, canonical
 from FlyIn.models.hub import Hub
 
 
+def _index_hubs(value: Any) -> Any:
+    """Takes a list of hub and index by name (no duplicate)"""
+
+    if not isinstance(value, list) or not all(
+        isinstance(h, Hub) for h in value
+    ):
+        return value
+    hubs: dict[str, Hub] = {}
+    for hub in value:
+        if hub.name in hubs:
+            raise ValueError(f"Duplicate hub name : {hub.name!r}")
+        hubs[hub.name] = hub
+    return hubs
+
+
+def _index_connection(value: Any) -> Any:
+    """Takes a list of conn, index it by its endpoints"""
+
+    if not isinstance(value, list) or not all(
+        isinstance(c, Connection) for c in value
+    ):
+        return value
+    conns: dict[tuple[str, str], Connection] = {}
+    for conn in value:
+        if conn.endpoints in conns:
+            a, b = conn.endpoints
+            raise ValueError(f"Duplicate conn: {a!r}-{b!r}")
+        conns[conn.endpoints] = conn
+    return conns
+
+
 class Graph:
     """Holds hubs, connections, and provides adjacency lookups."""
 
-    def __init__(self) -> None:
-        """Initialize an empty graph."""
+    hubs: Annotated[dict[str, Hub], BeforeValidator(_index_hubs)]
+    connections: Annotated[
+        dict[tuple[str, str], Connection],
+        BeforeValidator(_index_connection),
+    ] = Field(default_factory=dict)
+    _adjacency: dict[str, list[str]] = PrivateAttr(default_factory=dict)
 
-        self.hubs: dict[str, Hub] = {}
-        self.connections: dict[tuple[str, str], Connection] = {}
-        self._adjacency: dict[str, list[str]] = defaultdict(list)
+    @model_validator(mode="after")
+    def _check_integrity(self) -> Self:
+        """Check graph consistent, build adjacency lists"""
 
-    def add_hub(self, hub: Hub) -> None:
-        """Register a hub. Raises ValueError on duplicate names."""
-
-        if hub.name in self.hubs:
-            raise ValueError(f"Duplicate hub name: {hub.name!r}")
-        self.hubs[hub.name] = hub
-        # ensure all hub have an adjacency entry even if it has not edges
-        _ = self._adjacency[hub.name]
-
-    def add_connection(self, conn: Connection) -> None:
-        """Register a connection. Raises on duplicates or unknown hubs."""
-
-        key = conn.endpoints
-        if key in self.connections:
-            raise ValueError(f"Duplicate connection: {key[0]!r}-{key[1]!r}")
-        for name in key:
-            if name not in self.hubs:
-                raise ValueError(
-                    f"Connection references unknwon hub: {name!r}"
-                )
-            self.connections[key] = conn
-            self._adjacency[conn.zone_a].append(conn.zone_b)
-            self._adjacency[conn.zone_b].append(conn.zone_a)
+        adjacency: dict[str, list[str]] = {name: [] for name in self.hubs}
+        for conn in self.connections.values():
+            for name in conn.endpoints:
+                if name not in self.hubs:
+                    raise ValueError(
+                        f"Connection references unknown hub: {name!r}"
+                    )
+            adjacency[conn.zone_a].append(conn.zone_b)
+            adjacency[conn.zone_b].append(conn.zone_a)
+        if sum(h.is_start for h in self.hubs.values()) != 1:
+            raise ValueError(f"Expected only one start and end")
+        if sum(h.is_end for h in self.hubs.values()) != 1:
+            raise ValueError(f"Expected only one start and end")
+        self._adjacency = adjacency
+        return self
 
     def neighbors(self, hub_name: str) -> list[str]:
         """Return all hub names adajcent to the given hub."""

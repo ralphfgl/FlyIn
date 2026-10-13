@@ -13,6 +13,7 @@ from FlyIn.pygame_visualizer import PygameVisualizer
 
 def main() -> int:
     """Parse arguments, run the simulation, print the result."""
+
     parser = argparse.ArgumentParser(description="Fly-in drone router")
     parser.add_argument("map_file", help="Path to the map file")
     parser.add_argument(
@@ -34,13 +35,11 @@ def main() -> int:
     except ParseError as exc:
         print(f"Parse error: {exc}", file=sys.stderr)
         return 1
-
     pathfinder = PathFinder(graph)
     paths = pathfinder.find_paths(args.max_paths)
     if not paths:
         print("No path from start to end exists", file=sys.stderr)
         return 1
-
     if args.visualize:
         visualizer = PygameVisualizer(graph)
         start_hub = next(
@@ -51,7 +50,6 @@ def main() -> int:
         visualizer = TextVisualizer(graph)
     scheduler = Scheduler(graph, paths, nb_drones, visualizer=visualizer)
     turns = scheduler.run()
-
     for line in turns:
         print(line)
     return 0
