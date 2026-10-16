@@ -45,7 +45,7 @@ def _index_connection(value: Any) -> Any:
     return conns
 
 
-class Graph:
+class Graph(BaseModel):
     """Holds hubs, connections, and provides adjacency lookups."""
 
     hubs: Annotated[dict[str, Hub], BeforeValidator(_index_hubs)]
@@ -69,9 +69,9 @@ class Graph:
             adjacency[conn.zone_a].append(conn.zone_b)
             adjacency[conn.zone_b].append(conn.zone_a)
         if sum(h.is_start for h in self.hubs.values()) != 1:
-            raise ValueError(f"Expected only one start and end")
+            raise ValueError("Expected only one start and end")
         if sum(h.is_end for h in self.hubs.values()) != 1:
-            raise ValueError(f"Expected only one start and end")
+            raise ValueError("Expected only one start and end")
         self._adjacency = adjacency
         return self
 

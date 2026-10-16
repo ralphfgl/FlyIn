@@ -1,6 +1,6 @@
 """Drone representation."""
 
-from dataclasses import dataclass, field
+from pydantic import BaseModel
 from enum import Enum, auto
 
 
@@ -12,8 +12,7 @@ class DroneState(Enum):
     DELIVERED = auto()
 
 
-@dataclass
-class Drone:
+class Drone(BaseModel):
     """A single autonomous drone.
     Attributes:
         drone_id: unique identifier (e.g. "D1")

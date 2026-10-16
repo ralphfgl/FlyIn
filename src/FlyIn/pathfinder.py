@@ -1,55 +1,90 @@
 """Multi-path discovery from start hub to end."""
 
 import heapq
-from dataclasses import dataclass
+from typing import Self
+
+from pydantic import (
+    BaseModel,
+    model_validator,
+    ConfigDict,
+    Field,
+    PositiveFloat,
+    NonNegativeInt,
+)
 
 from FlyIn.models.graph import Graph
 from FlyIn.models.hub import Hub
 from FlyIn.models.zone_type import ZoneType
 
 
-@dataclass(frozen=True)
-class Path:
+class Path(BaseModel):
     """A candidate route from start to end.
+
     Attributes:
         hubs: ordered list of hub names (start to end)
-        total_cost: sum of movement costs along the path
+        step_costs: turns needed to enter each hub (0 for start)
+        throughupt: drones per turn this route can sustain on its own
+            limited by hub capa and link capa
     """
 
-    hubs: tuple[str, ...]
+    model_config = ConfigDict(frozen=True)
+    hubs: tuple[str, ...] = Field(min_length=1)
+    step_costs: tuple[NonNegativeInt, ...]
+    throughput: PositiveFloat = float("inf")
+
+    @model_validator(mode="after")
+    def _one_cost_each_hub(self) -> Self:
+        if len(self.step_costs) != len(self.hubs):
+            raise ValueError("step_costs must have on entry per hubs")
+        return self
 
     @property
-    def length(self):
+    def length(self) -> int:
         """Number of edges in the path (hubs -1)."""
+
         return len(self.hubs) - 1
 
-    # NOTE: ergonomic win (write for hub in path instead of in path.hubs)
-    def __iter__(self):
-        """Iterate over hub names."""
-        return iter(self.hubs)
+    @property
+    def cost(self) -> int:
+        """Turns needed by a drone to fly the path"""
+
+        return sum(self.step_costs)
+
+    @property
+    def cost_remaining(self) -> tuple[int, ...]:
+        """Nb of turns to reach the end, from each pos"""
+
+        left = [0] * len(self.hubs)
+        for i in range(len(self.hubs) - 2, -1, -1):
+            left[i] = left[i + 1] + self.step_costs[i + 1]
+        return tuple(left)
 
 
-# a cost is (turn_cost, priority_preference)
+# Search cost is (turn_cost, priority_preference)
 # turn cost is the real cost of the move
 # priority_preference is a tie breaker (-1 for priority zone, 0 otherwise)
 # INF is for blocking zone
-_Cost = tuple[int, int]
-_INF: _Cost = (10**9, 10**9)
+_Cost = tuple[float, float]
+_INF: _Cost = (float("inf"), float("inf"))
 
 
 class PathFinder:
-    """Discovers multiple distinct-ish path from start to end."""
+    """Discovers multiple path from start to end."""
 
-    def __init__(self, graph: Graph) -> None:
-        """Store graph reference and build reusable cost lookup."""
+    def __init__(self, graph: Graph, penalty: int = 1) -> None:
+        """Store the graph.
+        Args:
+            graph: the validated network
+            penalty: extra cost added when previous path went through it
+        """
+
         self.graph = graph
         self._start = graph.start.name
         self._end = graph.end.name
-        # penalty multiplier for hubs we already used in prior paths
-        self._penalty_factor: float = 2.5
+        self._penalty = penalty
 
     def find_paths(self, max_paths: int = 6) -> list[Path]:
-        """Discover up to max paths distinct routes.
+        """Discover up to max_paths distinct routes.
         Args:
             max_paths: upper bound on paths to return.
         Returns:
@@ -59,33 +94,64 @@ class PathFinder:
         penalties: dict[str, float] = {}
         # dict of path, duplicate collapse automatically
         found: dict[tuple[str, ...], Path] = {}
-
         for _ in range(max_paths):
-            path = self._dijkstra(penalties)
-            # unreachable end
-            if path is None:
+            hub_names = self._dijkstra(penalties)
+            if hub_names is None:  # unreachable end
                 break
-            # store the path
-            if path.hubs not in found:
-                found[path.hubs] = path
+            key = tuple(hub_names)
+            if key not in found:
+                found[key] = self._build_path(key)
             # penalize internal hubs by +1 (but not start and end)
-            for hub_name in path.hubs[1:-1]:
-                penalties[hub_name] = penalties.get(hub_name, 0.0) + 1.0
-
+            for name in hub_names[1:-1]:
+                penalties[name] = penalties.get(name, 0.0) + 1.0
         # sort the discovered path by real cost
         return sorted(found.values(), key=lambda p: self._path_cost(p))
 
     def _hub_entry_cost(self, hub: Hub, penalties: dict[str, float]) -> _Cost:
-        """Return the cost of *entering* the given hub."""
+        """Return the cost of entering the given hub."""
 
         if not hub.zone_type.is_walkable:
             return _INF
-        base = hub.zone_type.movement_cost
-        penalty = penalties.get(hub.name, 0.0)
+        turns = hub.zone_type.movement_cost + penalties.get(hub.name, 0)
         priority_bonus = -1 if hub.zone_type is ZoneType.PRIORITY else 0
-        return (int(base + penalty), priority_bonus)
+        return (turns, priority_bonus)
 
-    def _dijkstra(self, penalties: dict[str, float]) -> Path | None:
+    def _throughput(self, hub_names: tuple[str, ...]) -> float:
+        """Drones per turn the route sustain, based on its narrowest segment"""
+
+        rate = float("inf")
+        for a, b in zip(hub_names, hub_names[1:]):
+            hub = self.graph.hubs[b]
+            link = self.graph.get_connection(a, b)
+            rate = min(
+                rate,
+                hub.effective_capacity,
+                link.max_link_capacity / hub.zone_type.movement_cost,
+            )
+        return rate
+
+    def _build_path(self, hub_names: tuple[str, ...]) -> Path:
+        """Takes a tuple of hub name and build a path with its cost"""
+
+        step_costs = (0,) + tuple(
+            self.graph.hubs[h].zone_type.movement_cost for h in hub_names[1:]
+        )
+        return Path(
+            hubs=hub_names,
+            step_costs=step_costs,
+            throughput=self._throughput(hub_names),
+        )
+
+    def _rank(self, path: Path) -> tuple[int, int, int]:
+        """Sort path by: real cost, then priority zone, then shorter"""
+
+        priority = sum(
+            self.graph.hubs[h].zone_type is ZoneType.PRIORITY
+            for h in path.hubs
+        )
+        return (path.cost, -priority, path.length)
+
+    def _dijkstra(self, penalties: dict[str, float]) -> list[str] | None:
         """Run a single cost-weighted Dijkstra search.
         Args:
             penalties: Extra cost added to hub entry, keyed by hub name.
@@ -93,52 +159,35 @@ class PathFinder:
             the best Path found, or None if end is unreachable.
         """
 
-        # dist[hub] = best cumulative cost to reach hub (cheapest way to reach hub from start)
         dist: dict[str, _Cost] = {self._start: (0, 0)}
-        # for each hub, which hub we came from on the best path (to reconstruct the route)
         prev: dict[str, str] = {}
-        # priority queue, to pick the unknown hub with smallest cost
         heap: list[tuple[_Cost, str]] = [((0, 0), self._start)]
         while heap:
-            # pop the cheapest unsettled hub
             cost, current = heapq.heappop(heap)
-            # a hub can be pushed to the heap multiple times with decreasing costs (when better route is found); discard a worse entry
             if cost > dist.get(current, _INF):
                 continue
-            # finish when we pop end
             if current == self._end:
                 break
-            # for each neighbor, get the cost to enter
-            for neighbor_name in self.graph.neighbors(current):
-                neighbor = self.graph.hubs[neighbor_name]
-                step = self._hub_entry_cost(neighbor, penalties)
-                # skip blocked hubs
+            for nei in self.graph.neighbors(current):
+                step = self._hub_entry_cost(self.graph.hubs[nei], penalties)
                 if step == _INF:
                     continue
-                # compute total cost (current cost + step cost); both component add (cost and priority)
                 new_cost = (cost[0] + step[0], cost[1] + step[1])
-                # if cheaper than best known, record it and remomeber predecessor
-                # push to the heap
-                if new_cost < dist.get(neighbor_name, _INF):
-                    dist[neighbor_name] = new_cost
-                    prev[neighbor_name] = current
-                    heapq.heappush(heap, (new_cost, neighbor_name))
-
-        if self._end not in prev and self._start != self._end:
+                if new_cost < dist.get(nei, _INF):
+                    dist[nei] = new_cost
+                    prev[nei] = current
+                    heapq.heappush(heap, (new_cost, nei))
+        if self._end not in dist:
             return None
-        # reconstruct path
-        path = [self._end]
-        while path[-1] != self._start:
-            path.append(prev[path[-1]])
-        path.reverse()
-        # compute realized turn cost along the path
-        total = 0
-        for hub_name in path[1:]:
-            total += self.graph.hubs[hub_name].zone_type.movement_cost
-        return Path(hubs=tuple(path))
+        route = [self._end]
+        while route[-1] != self._start:
+            route.append(prev[route[-1]])
+        route.reverse()
+        return route
 
     def _path_cost(self, path: Path) -> int:
         """Turn cost of a past, ignoring priority tie-break."""
+
         return sum(
             self.graph.hubs[h].zone_type.movement_cost for h in path.hubs
         )

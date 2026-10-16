@@ -1,6 +1,6 @@
 PYTHON = uv run python
 
-MAP = maps/easy/01_linear_path.txt
+MAP ?= maps/easy/01_linear_path.txt
 MAX_PATHS ?= 6
 
 help:

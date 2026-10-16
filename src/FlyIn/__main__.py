@@ -1,13 +1,23 @@
 """Entry point for the Fly-in drone simulation."""
 
+import warnings
+import os
+
+try:
+    warnings.filterwarnings("ignore", category=RuntimeWarning)
+    os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
+except Exception as e:
+    print(f"{e}")
+
 import argparse
 import sys
+from typing import Union
 
-from FlyIn import vizualizer
 from FlyIn.parser import ParseError, parse_file, ParsedMap
 from FlyIn.pathfinder import PathFinder
 from FlyIn.scheduler import Scheduler
 from FlyIn.vizualizer import TextVisualizer
+
 from FlyIn.pygame_visualizer import PygameVisualizer
 
 
@@ -40,6 +50,7 @@ def main() -> int:
     if not paths:
         print("No path from start to end exists", file=sys.stderr)
         return 1
+    visualizer: Union[PygameVisualizer, TextVisualizer]
     if args.visualize:
         visualizer = PygameVisualizer(graph)
         start_hub = next(
@@ -56,4 +67,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception as e:
+        print(f"{e}")

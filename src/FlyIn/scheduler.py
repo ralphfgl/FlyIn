@@ -1,6 +1,6 @@
 """Turn by turn simulation engine."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from FlyIn.vizualizer import TextVisualizer
 from FlyIn.pygame_visualizer import PygameVisualizer
@@ -89,15 +89,21 @@ class Scheduler:
         """Advance one turn. Returns the formatted movement line."""
 
         moves: list[str] = []
+        arrived: set[str] = set()
         # Phase 1: advance in-transit drones (restricted-zone arrivals).
         for d in self.drones:
             if d.transit_target is not None:
                 d.transit_turns_left -= 1
                 if d.transit_turns_left == 0:
                     self._finish_transit(d, moves)
+                    arrived.add(d.drone_id)
         # Phase 2: try to move idle drones
         for d in self.drones:
-            if d.delivered or d.transit_target is not None:
+            if (
+                d.delivered
+                or d.transit_target is not None
+                or d.drone_id in arrived
+            ):
                 continue
             self._try_move(d, moves)
         line = " ".join(moves)
@@ -108,6 +114,7 @@ class Scheduler:
                 occupancy=self._occupancy,
                 in_transit=self._in_transit,
             )
+
         return line
 
     def _try_move(self, d: DroneState, moves: list[str]) -> None:
@@ -127,22 +134,20 @@ class Scheduler:
             used = self._in_transit.get(key, 0)
             if used >= conn.max_link_capacity:
                 return  # connection busy
-            # NOTE: we dont wait for destination space, the drone commit to the connection
             self._in_transit[key] = used + 1
             # discard -> set method to remove a key
             self._occupancy[d.current_hub].discard(d.drone_id)
             d.transit_target = target
-            d.transit_turns_left = 2
+            d.transit_turns_left = cost - 1
             moves.append(f"{d.drone_id}-{conn.zone_a}-{conn.zone_b}")
             return
         if not self._can_enter(target_hub, d.drone_id):
             return
         self._move_now(d, target, moves)
 
-    def _can_enter(self, hub: Hub, drone_id: str):
+    def _can_enter(self, hub: Hub, drone_id: str) -> bool:
         """Check whether hub has capaciy for one more drone this turn."""
 
-        # Drones currently in the hub that will LEAVE this turn are already removed from occupancy in _move_now/ _try_move, so occupancy reflects the 'already moved out' state
         return len(self._occupancy[hub.name]) < hub.effective_capacity
 
     def _move_now(self, d: DroneState, target: str, moves: list[str]) -> None:

@@ -48,55 +48,57 @@ _CONN_RE = re.compile(
     r"(?P<meta>\[.*\])?$"
 )
 
-_M = TypeVar("_M", bound=BaseModel)
+_ModelType = TypeVar("_ModelType", bound=BaseModel)
 
 
-def _format_errors(exc: ValidationError) -> str:
-    """Turn a pydantic ValidationError into a short one-line message."""
+def _format_errors(e: ValidationError) -> str:
+    """Turn a pydantic ValidationError into a short message."""
+
     parts = []
-    for err in exc.errors(include_url=False):
+    for err in e.errors(include_url=False):
         where = ".".join(str(p) for p in err["loc"])
         msg = err["msg"].removeprefix("Value error, ")
         parts.append(f"{where}: {msg}" if where else msg)
     return "; ".join(parts)
 
 
-def _validate(model: type[_M], data: dict[str, Any], line_no: int) -> _M:
-    """Validate ``data`` with a pydantic model, or raise a ParseError."""
+def _validate(
+    model: type[_ModelType], data: dict[str, Any], line_no: int
+) -> _ModelType:
+    """Validate data with a pydantic model, or raise custom ParseError."""
+
     try:
-        return model.model_validate(data)
-    except ValidationError as exc:
-        raise ParseError(line_no, _format_errors(exc)) from exc
-
-
-# Metadata
+        return model.model_validate(data)  # type: ignore
+    except ValidationError as e:
+        raise ParseError(line_no, _format_errors(e)) from e
 
 
 def _parse_metadata(raw: str | None, line_no: int) -> dict[str, str]:
-    """Split an optional ``[k=v k=v ...]`` block into a dict of strings.
-
-    Only the shape is checked here (and duplicate keys, which a dict would
-    silently swallow). Keys and values are validated by the pydantic models.
+    """Split the optional metadata [k=v k=v ...] into a dict of string.
+    Detect duplication of keys.
     """
+
     meta: dict[str, str] = {}
+    # remove the square bracket
     for token in (raw or "")[1:-1].split():
+        # returns everythin in key if the separator is not found
         key, sep, value = token.partition("=")
         if not (key and sep and value):
-            raise ParseError(line_no, f"Invalid metadata entry: {token!r}")
+            raise ParseError(line_no, f"Invalid meta entry: {token!r}")
         if key in meta:
-            raise ParseError(line_no, f"Duplicate metadata key: {key!r}")
+            raise ParseError(line_no, f"Duplicate meta key: {key!r}")
         meta[key] = value
     return meta
 
 
-# Line parsers
-
-
 def _parse_nb_drones(line: str, line_no: int) -> int:
+
     m = _NB_DRONES_RE.match(line)
     if not m:
         raise ParseError(line_no, f"Malformed nb_drones line: {line!r}")
-    return _validate(_Header, {"nb_drones": m["value"]}, line_no).nb_drones
+    return int(
+        _validate(_Header, {"nb_drones": m["value"]}, line_no).nb_drones
+    )
 
 
 def _parse_hub_line(line: str, line_no: int) -> Hub:
@@ -112,6 +114,7 @@ def _parse_hub_line(line: str, line_no: int) -> Hub:
             "y": m["y"],
             "is_start": m["kind"] == "start_hub",
             "is_end": m["kind"] == "end_hub",
+            # serialize and unpack
             **meta.model_dump(),
         },
         line_no,
@@ -132,29 +135,25 @@ def _parse_connection_line(line: str, line_no: int) -> Connection:
     )
 
 
-# File parser
-
-
 def parse_file(path: str | Path) -> ParsedMap:
-    """Parse a map file into a Graph and the number of drones."""
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            lines = fh.readlines()
-    except (OSError, UnicodeDecodeError) as exc:
-        raise ParseError(0, f"Cannot read {str(path)!r}: {exc}") from exc
+    """Map parsing"""
 
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except (OSError, UnicodeDecodeError) as e:
+        raise ParseError(0, f"Cannot read/open {str(path)!r}: {e}") from e
     nb_drones: int | None = None
     hubs: list[Hub] = []
     conns: list[Connection] = []
-
     for line_no, raw_line in enumerate(lines, start=1):
+        # handle comment
         line = raw_line.split("#", 1)[0].strip()
         if not line:
             continue
-
         if line.startswith("nb_drones:"):
             if nb_drones is not None:
-                raise ParseError(line_no, "Duplicate nb_drones declaration")
+                raise ParseError(line_no, "Duplicate nb_drones")
             nb_drones = _parse_nb_drones(line, line_no)
         elif line.startswith(("start_hub:", "end_hub:", "hub:")):
             hubs.append(_parse_hub_line(line, line_no))
@@ -162,9 +161,8 @@ def parse_file(path: str | Path) -> ParsedMap:
             conns.append(_parse_connection_line(line, line_no))
         else:
             raise ParseError(line_no, f"Unrecognized line: {line!r}")
-
     if nb_drones is None:
-        raise ParseError(0, "Missing nb_drones declaration")
+        raise ParseError(0, "Missing nb_drones")
     if not hubs:
         raise ParseError(0, "Map contains no hubs")
     graph = _validate(Graph, {"hubs": hubs, "connections": conns}, 0)

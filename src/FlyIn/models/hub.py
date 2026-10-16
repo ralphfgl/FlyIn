@@ -24,7 +24,7 @@ class HubMeta(BaseModel):
 
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
     zone_type: ZoneType = Field(default=ZoneType.NORMAL, alias="zone")
     color: str | None = None
     max_drones: PositiveInt = 1
@@ -68,7 +68,7 @@ class Hub(HubMeta):
 
         if self.is_start or self.is_end:
             return float("inf")
-        return self.max_drones
+        return int(self.max_drones)
 
     def has_space_for(self, drone_id: str, outgoing: int = 0) -> bool:
         """Check if a drone can enter this hub this turn.
