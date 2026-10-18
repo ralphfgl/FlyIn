@@ -1,6 +1,6 @@
 """Turn by turn simulation engine."""
 
-from dataclasses import dataclass
+from pydantic import BaseModel
 
 from FlyIn.vizualizer import TextVisualizer
 from FlyIn.pygame_visualizer import PygameVisualizer
@@ -9,26 +9,23 @@ from FlyIn.models.hub import Hub
 from FlyIn.pathfinder import Path
 
 
-@dataclass
-class DroneState:
-    """Runtime state for one drone."""
+class DroneState(BaseModel):
+    """Dynamic runtime state for one drone."""
 
     drone_id: str
-    path: tuple[str, ...]  # sequence of hub name
-    path_index: int = 0  # index of the hub the drone is currently at
+    path: tuple[str, ...]
+    path_index: int = 0  # index of the current hub
     delivered: bool = False
     transit_target: str | None = None
     transit_turns_left: int = 0
 
     @property
     def current_hub(self) -> str:
-        """Name of the hub the drone is currently occupying."""
-
         return self.path[self.path_index]
 
     @property
     def next_hub(self) -> str | None:
-        """The next hub on the path, or None if at the end."""
+        """Next hub on the path, None if at the end."""
 
         if self.path_index + 1 >= len(self.path):
             return None
@@ -36,7 +33,7 @@ class DroneState:
 
 
 class Scheduler:
-    """Runs the simulation and records the output lines."""
+    """Runs the simulation."""
 
     def __init__(
         self,
@@ -51,29 +48,30 @@ class Scheduler:
         self.paths = paths
         self.nb_drones = nb_drones
         self.drones: list[DroneState] = []
-        # assign drones to path round-robin
         for i in range(nb_drones):
             path = paths[i % len(paths)]
             self.drones.append(
                 DroneState(drone_id=f"D{i + 1}", path=path.hubs)
             )
-        # runtime occupancy: maps hub name -> set of drone ids currently here
+        # runtime occupancy: hub name -> set of drone_id
         self._occupancy: dict[str, set[str]] = {h: set() for h in graph.hubs}
         start_name = graph.start.name
         for d in self.drones:
             self._occupancy[start_name].add(d.drone_id)
-        # runtime connection usage: map (a, b) -> count of drones in transit
+        # runtime conn: (a,b) -> drone count on the link
         self._in_transit: dict[tuple[str, str], int] = {}
+        # checklist to reduce link occupancy at end of turn
+        self._release_at_end: list[tuple[str, str]] = []
         self.turns: list[str] = []
         self._visualizer = visualizer
 
-    # public API
     def run(self, max_turns: int = 10_000) -> list[str]:
         """Run the sim.
+
         Args:
-            max_turns: safety cap to prevent infinite sim.
+            max_turns: max nb of turn in a sim
         Returns:
-            A list of turn strings, each listing that turns movements.
+            A list of turn strings, listing turn movement.
         """
 
         for _ in range(max_turns):
@@ -82,11 +80,10 @@ class Scheduler:
             line = self._step()
             if line:
                 self.turns.append(line)
-        raise RuntimeError("Simulation exceeded max_turns without finishing.")
+        raise RuntimeError("Simulation exceeded max_turns.")
 
-    # internals
     def _step(self) -> str:
-        """Advance one turn. Returns the formatted movement line."""
+        """Advance one turn. Returns the movement line."""
 
         moves: list[str] = []
         arrived: set[str] = set()
@@ -106,6 +103,10 @@ class Scheduler:
             ):
                 continue
             self._try_move(d, moves)
+        # Phase 3: free the links used during this turn
+        for key in self._release_at_end:
+            self._in_transit[key] = max(0, self._in_transit.get(key, 1) - 1)
+        self._release_at_end.clear()
         line = " ".join(moves)
         if self._visualizer is not None:
             self._visualizer.render(
@@ -118,24 +119,22 @@ class Scheduler:
         return line
 
     def _try_move(self, d: DroneState, moves: list[str]) -> None:
-        """Attempt a single-step move for the given drone."""
+        """Turn execution"""
 
         target = d.next_hub
         if target is None:
-            return  # already at end, should not happen
+            return
         target_hub = self.graph.hubs[target]
         if not target_hub.zone_type.is_walkable:
-            return  # blocked, should not happen if pathfinder correct
+            return
         cost = target_hub.zone_type.movement_cost
+        conn = self.graph.get_connection(d.current_hub, target)
+        key = conn.endpoints
+        used = self._in_transit.get(key, 0)
+        if used >= conn.max_link_capacity:
+            return
         if cost == 2:
-            # restricted: begin a 2-turn transit thru connection
-            conn = self.graph.get_connection(d.current_hub, target)
-            key = conn.endpoints
-            used = self._in_transit.get(key, 0)
-            if used >= conn.max_link_capacity:
-                return  # connection busy
             self._in_transit[key] = used + 1
-            # discard -> set method to remove a key
             self._occupancy[d.current_hub].discard(d.drone_id)
             d.transit_target = target
             d.transit_turns_left = cost - 1
@@ -143,15 +142,17 @@ class Scheduler:
             return
         if not self._can_enter(target_hub, d.drone_id):
             return
+        self._in_transit[key] = used + 1
+        self._release_at_end.append(key)
         self._move_now(d, target, moves)
 
     def _can_enter(self, hub: Hub, drone_id: str) -> bool:
-        """Check whether hub has capaciy for one more drone this turn."""
+        """Check capacity of destination hub"""
 
         return len(self._occupancy[hub.name]) < hub.effective_capacity
 
     def _move_now(self, d: DroneState, target: str, moves: list[str]) -> None:
-        """Commit a single-turn move for a drone."""
+        """Single-turn move for a drone."""
 
         self._occupancy[d.current_hub].discard(d.drone_id)
         self._occupancy[target].add(d.drone_id)
@@ -167,9 +168,7 @@ class Scheduler:
         assert target is not None
         conn = self.graph.get_connection(d.current_hub, target)
         key = conn.endpoints
-        # guard against negative value
-        self._in_transit[key] = max(0, self._in_transit.get(key, 1) - 1)
-        # the drone must arrive, no capacity check on destination
+        self._release_at_end.append(key)
         self._occupancy[target].add(d.drone_id)
         d.path_index += 1
         d.transit_target = None

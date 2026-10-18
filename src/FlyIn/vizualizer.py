@@ -1,32 +1,13 @@
-"""Minimal text visualizer for the drone simulation.
+"""Text visualizer for simulation ouput."""
 
-Prints a summary of each hub's occupancy after every turn.
-"""
-
-from .models.graph import Graph
-
-_COLOR_CODES = {
-    "red": "\033[31m",
-    "green": "\033[32m",
-    "yellow": "\033[33m",
-    "blue": "\033[34m",
-    "gray": "\033[90m",
-}
-_RESET = "\033[0m"
-
-
-def _colorize(text: str, color: str | None) -> str:
-    code = _COLOR_CODES.get(color or "", "")
-    if not code:
-        return text
-    return f"{code}{text}{_RESET}"
+from FlyIn.models.graph import Graph
+from FlyIn.color import ansi_fg, ANSI_RESET
 
 
 class TextVisualizer:
-    """Prints drone positions as text after each simulation turn."""
+    """Prints drone positions at each sim turns."""
 
     def __init__(self, graph: Graph) -> None:
-        """Store a reference to the graph for hub lookups."""
         self.graph = graph
 
     def render(
@@ -45,17 +26,15 @@ class TextVisualizer:
             in_transit: Current drones per connection (canonical key).
         """
         print(f"--- Turn {turn} ---")
-        if movement_line:
-            print(movement_line)
-        else:
-            print("(no moves)")
-
+        print(movement_line if movement_line else "(no moves)")
         for name in sorted(self.graph.hubs):
             drones = occupancy.get(name, set())
             if not drones:
                 continue
+            hub = self.graph.hubs[name]
+            col = ansi_fg(hub.color)
             drone_list = " ".join(sorted(drones))
-            print(f"  {name}: {drone_list}")
+            print(f"  {col}{name}{ANSI_RESET}: {drone_list}")
 
         if in_transit:
             for key, count in in_transit.items():

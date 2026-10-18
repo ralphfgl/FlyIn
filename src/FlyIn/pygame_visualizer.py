@@ -8,20 +8,25 @@ import pygame
 from FlyIn.models.connections import canonical
 from FlyIn.models.graph import Graph
 from FlyIn.models.zone_type import ZoneType
+from FlyIn.color import rgb
+
+# WIDTH = 1920
+# HEIGHT = 1200
+WIDTH = 1180
+HEIGHT = 620
 
 
 class PygameVisualizer:
     def __init__(self, graph: Graph) -> None:
         pygame.init()
         self.graph = graph
-        self.screen = pygame.display.set_mode((1920, 1200))
+        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("FlyIn - Drone Simulation")
-        self.font = pygame.font.SysFont(None, 18)
+        self.font_size = max(12, int(WIDTH * 0.015))
+        self.font = pygame.font.SysFont(None, self.font_size)
         self.clock = pygame.time.Clock()
         self.turn = 0
-        # where drone were at the previous render (to see which links it used)
         self._where: dict[str, str] = {}
-        # Convert map coordinates to screen coordinates.
         xs = [h.x for h in graph.hubs.values()]
         ys = [h.y for h in graph.hubs.values()]
         min_x, max_x = min(xs), max(xs)
@@ -30,19 +35,21 @@ class PygameVisualizer:
         def scale(value: float, low: float, high: float, size: float) -> float:
             """Determine the box of the map"""
 
-            # prevent division by 0
             if low == high:
                 return size // 2
-            return 140 + (value - low) * (size - 280) / (high - low)
+            padding = size * 0.15
+            return padding + (value - low) * (size - (padding * 2)) / (
+                high - low
+            )
 
         self.positions = {
             name: (
-                int(scale(h.x, min_x, max_x, 1920)),
-                int(scale(h.y, min_y, max_y, 1200)),
+                int(scale(h.x, min_x, max_x, WIDTH)),
+                int(scale(h.y, min_y, max_y, HEIGHT)),
             )
             for name, h in graph.hubs.items()
         }
-        self.hub_radius = 40
+        self.hub_radius = max(20, int(min(WIDTH, HEIGHT) * 0.035))
 
     def render(
         self,
@@ -65,33 +72,26 @@ class PygameVisualizer:
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-        # Connections crossed this turn: drones that changed hub since the
-        # previous render (drones still travelling are in `in_transit`).
-        where = {d: hub for hub, ds in occupancy.items() for d in ds}
+        where = {d: hub_name for hub_name, ds in occupancy.items() for d in ds}
         crossed: Counter[tuple[str, str]] = Counter()
-        for drone, hub in where.items():
+        for drone, hub_name in where.items():
             before = self._where.get(drone)
-            if before is not None and before != hub:
-                crossed[canonical(before, hub)] += 1
+            if before is not None and before != hub_name:
+                crossed[canonical(before, hub_name)] += 1
         self._where = where
-
         self.screen.fill((245, 247, 250))
-
-        # Draw connections.
         for conn in self.graph.connections.values():
             a = self.positions[conn.zone_a]
             b = self.positions[conn.zone_b]
             pygame.draw.line(self.screen, (170, 180, 190), a, b, 5)
-
-        # Draw hubs and their drone counts.
-        for name, hub in self.graph.hubs.items():
-            x, y = self.positions[name]
-            drones = sorted(occupancy.get(name, set()))
-            # start and end hubs are unlimited: no capacity to show
+        for hub_name, hub in self.graph.hubs.items():
+            x, y = self.positions[hub_name]
+            drones = sorted(occupancy.get(hub_name, set()))
             limited = not (hub.is_start or hub.is_end)
             over = limited and len(drones) > hub.max_drones
-
-            if hub.is_start:
+            if hub.color is not None:
+                color = rgb(hub.color)
+            elif hub.is_start:
                 color = (70, 180, 100)
             elif hub.is_end:
                 color = (230, 90, 90)
@@ -101,39 +101,37 @@ class PygameVisualizer:
                 color = (80, 80, 80)
             else:
                 color = (80, 145, 220)
-
             pygame.draw.circle(self.screen, color, (x, y), self.hub_radius)
             ring = (200, 0, 0) if over else (40, 40, 40)
             pygame.draw.circle(self.screen, ring, (x, y), self.hub_radius, 3)
-
-            label = self.font.render(name, True, (20, 20, 20))
+            name_surf = self.font.render(hub_name, True, (20, 20, 20))
             self.screen.blit(
-                label, label.get_rect(center=(x, y - self.hub_radius - 20))
+                name_surf,
+                name_surf.get_rect(
+                    center=(x, y - self.hub_radius - self.font_size)
+                ),
             )
-
-            text = str(len(drones))
+            count_text = str(len(drones))
             if limited:
-                text += f"/{hub.max_drones}"
-            count = self.font.render(text, True, (255, 255, 255))
-            self.screen.blit(count, count.get_rect(center=(x, y)))
-
-            # Show drone IDs below each hub.
+                count_text += f"/{hub.max_drones}"
+            count_surf = self.font.render(count_text, True, (255, 255, 255))
+            self.screen.blit(count_surf, count_surf.get_rect(center=(x, y)))
             if drones:
                 max_per_line = 6
                 drone_lines = [
                     drones[i : i + max_per_line]  # noqa: E203
                     for i in range(0, len(drones), max_per_line)
                 ]
-                y_offset = y + self.hub_radius + 20
+                y_offset = y + self.hub_radius + self.font_size
                 for index, line in enumerate(drone_lines):
                     ids = ", ".join(line)
-                    text = self.font.render(ids, True, (30, 30, 30))
+                    ids_surf = self.font.render(ids, True, (30, 30, 30))
                     self.screen.blit(
-                        text,
-                        text.get_rect(center=(x, y_offset + (index * 15))),
+                        ids_surf,
+                        ids_surf.get_rect(
+                            center=(x, y_offset + (index * self.font_size))
+                        ),
                     )
-
-        # Connection usage, drawn last so the labels stay on top of the hubs.
         placed: list[pygame.Rect] = []
         for conn in self.graph.connections.values():
             a = self.positions[conn.zone_a]
@@ -141,46 +139,27 @@ class PygameVisualizer:
             used = crossed[conn.endpoints] + in_transit.get(conn.endpoints, 0)
             cap = conn.max_link_capacity
             color = (200, 0, 0) if used > cap else (20, 20, 20)
-            label = self.font.render(f"{used}/{cap}", True, color)
-            # Middle of the line first; crossing lines share a middle, so
-            # slide along the line if another label is already there.
+            usage = self.font.render(f"{used}/{cap}", True, color)
             for t in (0.5, 0.4, 0.6, 0.3, 0.7):
                 center = (
                     int(a[0] + (b[0] - a[0]) * t),
                     int(a[1] + (b[1] - a[1]) * t),
                 )
-                box = label.get_rect(center=center).inflate(8, 4)
+                box = usage.get_rect(center=center).inflate(8, 4)
                 if not any(box.colliderect(other) for other in placed):
                     break
             placed.append(box)
             pygame.draw.rect(self.screen, (245, 247, 250), box)
-            self.screen.blit(label, label.get_rect(center=center))
-
-        title = self.font.render(
-            f"Turn: {turn}    In transit: {sum(in_transit.values())}",
-            True,
-            (20, 20, 20),
-        )
+            self.screen.blit(usage, usage.get_rect(center=center))
+        title = self.font.render(f"Turn: {turn}", True, (20, 20, 20))
         self.screen.blit(title, (30, 20))
-        legend = self.font.render(
-            "hub: drones/max_drones    connection: used/max_link_capacity"
-            "    red = over capacity",
-            True,
-            (60, 60, 60),
-        )
-        self.screen.blit(legend, (30, 44))
-
         pygame.display.flip()
         self.wait_for_input()
-
-        # Pause briefly so each turn is visible.
-        deadline = pygame.time.get_ticks() + 500
-        while pygame.time.get_ticks() < deadline:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
-            self.clock.tick(60)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+        self.clock.tick(60)
 
     def wait_for_input(self) -> None:
         """Wait until the user presses Space or closes the window."""
@@ -199,13 +178,11 @@ class PygameVisualizer:
             self.clock.tick(30)
 
     def render_initial_state(self, start_hub: str, nb_drones: int) -> None:
-        """Display Turn 0 with every drone at the start hub."""
+        """Display turn 0"""
 
         occupancy: dict[str, set] = {hub: set() for hub in self.graph.hubs}
-
         for i in range(nb_drones):
             occupancy[start_hub].add(f"D{i + 1}")
-
         self.render(
             turn=0,
             movement_line="",

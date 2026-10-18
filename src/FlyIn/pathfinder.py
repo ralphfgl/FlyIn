@@ -63,7 +63,6 @@ class Path(BaseModel):
 # Search cost is (turn_cost, priority_preference)
 # turn cost is the real cost of the move
 # priority_preference is a tie breaker (-1 for priority zone, 0 otherwise)
-# INF is for blocking zone
 _Cost = tuple[float, float]
 _INF: _Cost = (float("inf"), float("inf"))
 
