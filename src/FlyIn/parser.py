@@ -68,7 +68,7 @@ def _validate(
     """Validate data with a pydantic model, or raise custom ParseError."""
 
     try:
-        return model.model_validate(data)
+        return model.model_validate(data)  # type: ignore[no-any-return]
     except ValidationError as e:
         raise ParseError(line_no, _format_errors(e)) from e
 
