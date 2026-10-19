@@ -44,11 +44,6 @@ class Connection(ConnectionMeta):
         object.__setattr__(self, "zone_b", b)
         return self
 
-    def connects(self, name: str) -> bool:
-        """Return True if this connection touches the given zone."""
-
-        return name == self.zone_a or name == self.zone_b
-
     def other_end(self, name: str) -> str:
         """Return the zone at the opposite end of the connection."""
 

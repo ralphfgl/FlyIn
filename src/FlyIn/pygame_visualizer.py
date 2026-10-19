@@ -155,11 +155,6 @@ class PygameVisualizer:
         self.screen.blit(title, (30, 20))
         pygame.display.flip()
         self.wait_for_input()
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-        self.clock.tick(60)
 
     def wait_for_input(self) -> None:
         """Wait until the user presses Space or closes the window."""

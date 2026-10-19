@@ -23,14 +23,12 @@ class Path(BaseModel):
     Attributes:
         hubs: ordered list of hub names (start to end)
         step_costs: turns needed to enter each hub (0 for start)
-        throughupt: drones per turn this route can sustain on its own
             limited by hub capa and link capa
     """
 
     model_config = ConfigDict(frozen=True)
     hubs: tuple[str, ...] = Field(min_length=1)
     step_costs: tuple[NonNegativeInt, ...]
-    throughput: PositiveFloat = float("inf")
 
     @model_validator(mode="after")
     def _one_cost_each_hub(self) -> Self:
@@ -70,17 +68,15 @@ _INF: _Cost = (float("inf"), float("inf"))
 class PathFinder:
     """Discovers multiple path from start to end."""
 
-    def __init__(self, graph: Graph, penalty: int = 1) -> None:
+    def __init__(self, graph: Graph) -> None:
         """Store the graph.
         Args:
             graph: the validated network
-            penalty: extra cost added when previous path went through it
         """
 
         self.graph = graph
         self._start = graph.start.name
         self._end = graph.end.name
-        self._penalty = penalty
 
     def find_paths(self, max_paths: int = 6) -> list[Path]:
         """Discover up to max_paths distinct routes.
@@ -115,20 +111,6 @@ class PathFinder:
         priority_bonus = -1 if hub.zone_type is ZoneType.PRIORITY else 0
         return (turns, priority_bonus)
 
-    def _throughput(self, hub_names: tuple[str, ...]) -> float:
-        """Drones per turn the route sustain, based on its narrowest segment"""
-
-        rate = float("inf")
-        for a, b in zip(hub_names, hub_names[1:]):
-            hub = self.graph.hubs[b]
-            link = self.graph.get_connection(a, b)
-            rate = min(
-                rate,
-                hub.effective_capacity,
-                link.max_link_capacity / hub.zone_type.movement_cost,
-            )
-        return rate
-
     def _build_path(self, hub_names: tuple[str, ...]) -> Path:
         """Takes a tuple of hub name and build a path with its cost"""
 
@@ -138,17 +120,7 @@ class PathFinder:
         return Path(
             hubs=hub_names,
             step_costs=step_costs,
-            throughput=self._throughput(hub_names),
         )
-
-    def _rank(self, path: Path) -> tuple[int, int, int]:
-        """Sort path by: real cost, then priority zone, then shorter"""
-
-        priority = sum(
-            self.graph.hubs[h].zone_type is ZoneType.PRIORITY
-            for h in path.hubs
-        )
-        return (path.cost, -priority, path.length)
 
     def _dijkstra(self, penalties: dict[str, float]) -> list[str] | None:
         """Run a single cost-weighted Dijkstra search.
