@@ -16,7 +16,7 @@ from typing import Union
 from FlyIn.parser import ParseError, parse_file, ParsedMap
 from FlyIn.pathfinder import PathFinder
 from FlyIn.scheduler import Scheduler
-from FlyIn.vizualizer import TextVisualizer
+from FlyIn.visualizer import TextVisualizer
 
 from FlyIn.pygame_visualizer import PygameVisualizer
 

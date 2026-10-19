@@ -20,8 +20,6 @@ class TextVisualizer:
         """Print one turn's state.
 
         Args:
-            turn: 1-based turn number.
-            movement_line: The formatted movement output for this turn.
             occupancy: Current drones per hub.
             in_transit: Current drones per connection (canonical key).
         """

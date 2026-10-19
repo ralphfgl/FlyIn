@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel
 
-from FlyIn.vizualizer import TextVisualizer
+from FlyIn.visualizer import TextVisualizer
 from FlyIn.pygame_visualizer import PygameVisualizer
 from FlyIn.models.graph import Graph
 from FlyIn.models.hub import Hub
