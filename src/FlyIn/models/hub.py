@@ -69,13 +69,3 @@ class Hub(HubMeta):
         if self.is_start or self.is_end:
             return float("inf")
         return int(self.max_drones)
-
-    def has_space_for(self, drone_id: str, outgoing: int = 0) -> bool:
-        """Check if a drone can enter this hub this turn.
-        Args:
-            drone_id: the drone attempting to enter.
-            outgoing: nb of drones that will leave this turn.
-        """
-
-        projected = len(self.current_drones) - outgoing
-        return projected < self.effective_capacity
