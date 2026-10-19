@@ -147,7 +147,6 @@ def parse_file(path: str | Path) -> ParsedMap:
     hubs: list[Hub] = []
     conns: list[Connection] = []
     for line_no, raw_line in enumerate(lines, start=1):
-        # handle comment
         line = raw_line.split("#", 1)[0].strip()
         if not line:
             continue

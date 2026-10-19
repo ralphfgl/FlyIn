@@ -87,14 +87,14 @@ class Scheduler:
 
         moves: list[str] = []
         arrived: set[str] = set()
-        # Phase 1: advance in-transit drones (restricted-zone arrivals).
+        # 1. advance in-transit drones (restricted-zone arrivals).
         for d in self.drones:
             if d.transit_target is not None:
                 d.transit_turns_left -= 1
                 if d.transit_turns_left == 0:
                     self._finish_transit(d, moves)
                     arrived.add(d.drone_id)
-        # Phase 2: try to move idle drones
+        # 2. try to move idle drones
         for d in self.drones:
             if (
                 d.delivered
@@ -103,7 +103,7 @@ class Scheduler:
             ):
                 continue
             self._try_move(d, moves)
-        # Phase 3: free the links used during this turn
+        # 3. free the links used during this turn
         for key in self._release_at_end:
             self._in_transit[key] = max(0, self._in_transit.get(key, 1) - 1)
         self._release_at_end.clear()

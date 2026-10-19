@@ -22,8 +22,6 @@ PALETTE: dict[str, tuple[int, int, int]] = {
     "white": (240, 240, 240),
     "gray": (140, 140, 140),
     "grey": (140, 140, 140),
-    # "rainbow" gets a special animated-ish RGB; see pygame visualizer.
-    "rainbow": (255, 100, 200),
 }
 
 _FALLBACK = (140, 140, 140)

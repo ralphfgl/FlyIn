@@ -10,10 +10,10 @@ from FlyIn.models.graph import Graph
 from FlyIn.models.zone_type import ZoneType
 from FlyIn.color import rgb
 
-# WIDTH = 1920
-# HEIGHT = 1200
-WIDTH = 1180
-HEIGHT = 620
+WIDTH = 1920
+HEIGHT = 1200
+# WIDTH = 1180
+# HEIGHT = 620
 
 
 class PygameVisualizer:
@@ -92,15 +92,15 @@ class PygameVisualizer:
             if hub.color is not None:
                 color = rgb(hub.color)
             elif hub.is_start:
-                color = (70, 180, 100)
+                color = rgb("green")
             elif hub.is_end:
-                color = (230, 90, 90)
+                color = rgb("red")
             elif hub.zone_type == ZoneType.RESTRICTED:
-                color = (240, 170, 50)
+                color = rgb("yellow")
             elif hub.zone_type == ZoneType.BLOCKED:
-                color = (80, 80, 80)
+                color = rgb("gray")
             else:
-                color = (80, 145, 220)
+                color = rgb("blue")
             pygame.draw.circle(self.screen, color, (x, y), self.hub_radius)
             ring = (200, 0, 0) if over else (40, 40, 40)
             pygame.draw.circle(self.screen, ring, (x, y), self.hub_radius, 3)
