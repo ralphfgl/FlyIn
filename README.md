@@ -43,7 +43,6 @@ A Yen-style **penalty-iterated Dijkstra** algorithm:
 - Excludes blocked zones.
 - Assigns a cost of `2` turns to restricted zones.
 
-Each path carries its own `throughput`, calculated as the minimum of its hub capacities and its link capacity adjusted for zone cost. This information is used later for drone distribution.
 
 ### 3. Scheduling (`scheduler.py`)
 

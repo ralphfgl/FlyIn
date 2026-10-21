@@ -1,7 +1,7 @@
 PYTHON = uv run python
 
 MAP ?= maps/easy/01_linear_path.txt
-MAX_PATHS ?= 6
+MAX_PATHS ?= 2
 
 help:
 	@echo "Available commands:"

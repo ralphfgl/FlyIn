@@ -53,11 +53,15 @@ class Scheduler:
             self.drones.append(
                 DroneState(drone_id=f"D{i + 1}", path=path.hubs)
             )
-        # runtime occupancy: hub name -> set of drone_id
+        # runtime occupancy
         self._occupancy: dict[str, set[str]] = {h: set() for h in graph.hubs}
-        start_name = graph.start.name
         for d in self.drones:
-            self._occupancy[start_name].add(d.drone_id)
+            self._occupancy[graph.start.name].add(d.drone_id)
+        # restricted hub name -> ids of d currently traveling to it
+        self._inbound: dict[str, set[str]] = {h: set() for h in graph.hubs}
+        self._by_id: dict[str, DroneState] = {
+            d.drone_id: d for d in self.drones
+        }
         # runtime conn: (a,b) -> drone count on the link
         self._in_transit: dict[tuple[str, str], int] = {}
         # checklist to reduce link occupancy at end of turn
@@ -86,24 +90,29 @@ class Scheduler:
         """Advance one turn. Returns the movement line."""
 
         moves: list[str] = []
-        arrived: set[str] = set()
-        # 1. advance in-transit drones (restricted-zone arrivals).
+        landing: list[DroneState] = []
+        # 1. deliver drone in transit
         for d in self.drones:
             if d.transit_target is not None:
                 d.transit_turns_left -= 1
                 if d.transit_turns_left == 0:
-                    self._finish_transit(d, moves)
-                    arrived.add(d.drone_id)
-        # 2. try to move idle drones
+                    key = self.graph.get_connection(
+                        d.current_hub, d.transit_target
+                    ).endpoints
+                    # decrease nb of d in transit in conn
+                    self._in_transit[key] = max(
+                        0, self._in_transit.get(key, 1) - 1
+                    )
+                    landing.append(d)
+        # 2. try to move idle d
         for d in self.drones:
-            if (
-                d.delivered
-                or d.transit_target is not None
-                or d.drone_id in arrived
-            ):
+            if d.delivered or d.transit_target is not None:
                 continue
             self._try_move(d, moves)
-        # 3. free the links used during this turn
+        # 3. land arrivals after leavers have vacated their hubs
+        for d in landing:
+            self._finish_transit(d, moves)
+        # 4. free the links used during this turn
         for key in self._release_at_end:
             self._in_transit[key] = max(0, self._in_transit.get(key, 1) - 1)
         self._release_at_end.clear()
@@ -134,7 +143,10 @@ class Scheduler:
         if used >= conn.max_link_capacity:
             return
         if cost == 2:
+            if not self._can_depart_restricted(target_hub):
+                return
             self._in_transit[key] = used + 1
+            self._inbound[target].add(d.drone_id)
             self._occupancy[d.current_hub].discard(d.drone_id)
             d.transit_target = target
             d.transit_turns_left = cost - 1
@@ -146,10 +158,38 @@ class Scheduler:
         self._release_at_end.append(key)
         self._move_now(d, target, moves)
 
+    def _can_depart_restricted(self, hub: Hub) -> bool:
+        """Allow drones to travel through restricted link,
+        even if the destination hub is at full capacity.
+        """
+
+        end = self.graph.end
+        if hub.name == end.name:
+            return True
+        total = 0
+        # drone that want to leave the restricted hub to end
+        wanting = 0
+        conn = None
+        # count d in restrict hub and in its link
+        for name in self._occupancy[hub.name] | self._inbound[hub.name]:
+            d = self._by_id[name]
+            # add one if drone traveling toward the hub we are cheking
+            idx = d.path_index + (1 if d.transit_target == hub.name else 0)
+            nxt = d.path[idx + 1] if idx + 1 < len(d.path) else None
+            total += 1
+            if nxt == end.name and end.zone_type.movement_cost == 1:
+                conn = self.graph.get_connection(hub.name, nxt)
+                wanting += 1
+        leaving = min(wanting, conn.max_link_capacity) if conn else 0
+        return total - leaving < hub.effective_capacity
+
     def _can_enter(self, hub: Hub, drone_id: str) -> bool:
         """Check capacity of destination hub"""
 
-        return len(self._occupancy[hub.name]) < hub.effective_capacity
+        return (
+            len(self._occupancy[hub.name]) + len(self._inbound[hub.name])
+            < hub.effective_capacity
+        )
 
     def _move_now(self, d: DroneState, target: str, moves: list[str]) -> None:
         """Single-turn move for a drone."""
@@ -166,9 +206,12 @@ class Scheduler:
 
         target = d.transit_target
         assert target is not None
-        conn = self.graph.get_connection(d.current_hub, target)
-        key = conn.endpoints
-        self._release_at_end.append(key)
+        assert (
+            target == self.graph.end.name
+            or len(self._occupancy[target])
+            < self.graph.hubs[target].effective_capacity
+        ), f"{target} overfull on landing"
+        self._inbound[target].discard(d.drone_id)
         self._occupancy[target].add(d.drone_id)
         d.path_index += 1
         d.transit_target = None

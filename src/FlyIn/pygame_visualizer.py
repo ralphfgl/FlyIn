@@ -10,10 +10,10 @@ from FlyIn.models.graph import Graph
 from FlyIn.models.zone_type import ZoneType
 from FlyIn.color import rgb
 
-WIDTH = 1920
-HEIGHT = 1200
-# WIDTH = 1180
-# HEIGHT = 620
+# WIDTH = 1920
+# HEIGHT = 1200
+WIDTH = 1180
+HEIGHT = 620
 
 
 class PygameVisualizer:

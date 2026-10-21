@@ -29,8 +29,8 @@ def main() -> int:
     parser.add_argument(
         "--max-paths",
         type=int,
-        default=6,
-        help="Maximum number of paths to discover (default: 6)",
+        default=2,
+        help="Maximum number of paths to discover (default: 2)",
     )
     parser.add_argument(
         "--visualize",

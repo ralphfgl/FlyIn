@@ -77,7 +77,7 @@ class PathFinder:
         self._start = graph.start.name
         self._end = graph.end.name
 
-    def find_paths(self, max_paths: int = 6) -> list[Path]:
+    def find_paths(self, max_paths: int) -> list[Path]:
         """Discover up to max_paths distinct routes.
         Args:
             max_paths: upper bound on paths to return.
@@ -99,7 +99,7 @@ class PathFinder:
             for name in hub_names[1:-1]:
                 penalties[name] = penalties.get(name, 0.0) + 1.0
         # sort the discovered path by real cost
-        return sorted(found.values(), key=lambda p: self._path_cost(p))
+        return sorted(found.values(), key=lambda p: p.cost)
 
     def _hub_entry_cost(self, hub: Hub, penalties: dict[str, float]) -> _Cost:
         """Return the cost of entering the given hub."""
@@ -155,9 +155,9 @@ class PathFinder:
         route.reverse()
         return route
 
-    def _path_cost(self, path: Path) -> int:
-        """Turn cost of a past, ignoring priority tie-break."""
-
-        return sum(
-            self.graph.hubs[h].zone_type.movement_cost for h in path.hubs
-        )
+    # def _path_cost(self, path: Path) -> int:
+    #     """Turn cost of a past, ignoring priority tie-break."""
+    #
+    #     return sum(
+    #         self.graph.hubs[h].zone_type.movement_cost for h in path.hubs
+    #     )
